@@ -1,0 +1,21 @@
+# 环境变量文件（包含敏感信息）
+.env
+
+# 二进制文件
+ai-cr
+*.exe
+
+# 日志文件
+*.log
+
+# IDE 配置
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+# 测试缓存
+.git/ai-cr-cache/

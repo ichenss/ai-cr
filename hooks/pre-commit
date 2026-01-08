@@ -1,0 +1,6 @@
+#!/bin/bash
+
+# AI Code Review - Pre-commit Hook
+# 不进行审查，直接通过
+
+exit 0

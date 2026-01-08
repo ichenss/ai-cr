@@ -1,0 +1,6 @@
+#!/bin/bash
+
+# AI Code Review - Commit Message Hook
+# 不添加审查摘要，直接通过
+
+exit 0
