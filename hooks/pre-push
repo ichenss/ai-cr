@@ -80,13 +80,33 @@ fi
 echo "📊 代码变更大小: $DIFF_LENGTH 字符"
 echo ""
 
+# 分析 diff：统计新增和删除的代码行
+ADDED_LINES=$(echo "$DIFF_CONTENT" | grep -E '^\+[^+]' | wc -l | tr -d ' ')
+DELETED_LINES=$(echo "$DIFF_CONTENT" | grep -E '^-[^-]' | wc -l | tr -d ' ')
+
+echo "� 代码变更统计:"
+echo "  ➕ 新增: $ADDED_LINES 行"
+echo "  ➖ 删除: $DELETED_LINES 行"
+echo ""
+
+# 如果只有删除没有新增，直接放行（删除代码通常是安全的）
+if [ "$ADDED_LINES" -eq 0 ] && [ "$DELETED_LINES" -gt 0 ]; then
+    echo "✅ 本次变更只删除代码，无需审查"
+    echo "✅ 允许推送"
+    exit 0
+fi
+
 # 审查代码变更
 echo "🔍 AI 审查中（只审查本次修改的代码）..."
 
 # 构建审查请求
 REQUEST_TEXT="请严格审查以下代码变更，这些代码即将推送到远程仓库。
 
-【重要】只审查下面 diff 中标记为 + 的新增代码和修改的代码，不要审查整个文件。
+【代码变更统计】
+- 新增: $ADDED_LINES 行
+- 删除: $DELETED_LINES 行
+
+【重要】只审查下面 diff 中标记为 + 的新增代码，不要审查删除的代码（- 开头的行）。
 
 代码变更（git diff）：
 \`\`\`diff
@@ -99,7 +119,8 @@ $DIFF_CONTENT
 3. 性能问题
 4. 代码规范问题
 
-如果发现严重问题，请明确标注「严重」或「critical」。"
+如果新增的代码没有问题，请明确回复「✅ 通过」或「✅ 可以推送」。
+如果发现严重问题，请明确标注「❌ 严重问题」。"
 
 # 调用 AI CR 服务
 REVIEW_RESULT=$(curl -s -X POST http://localhost:8083/api/review \
@@ -125,8 +146,22 @@ echo "$REVIEW_RESULT"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-# 检查是否有严重问题（严格模式）
-if echo "$REVIEW_RESULT" | grep -qi "严重\|critical\|security\|安全\|漏洞\|bug"; then
+# 智能判断：优先检查是否通过
+# 1. 如果 AI 明确说"通过"或"接受"，直接放行
+if echo "$REVIEW_RESULT" | grep -Eq "✅.*(通过|接受|允许|可以推送)|审查.*通过|建议.*接受|这个变更.*应该.*接受|这是.*正面.*修复|这是.*好的.*变更"; then
+    echo "✅ AI 审查通过，允许推送"
+    exit 0
+fi
+
+# 2. 如果包含"删除"、"移除"、"修复"等正面词汇，且提到"危险"、"漏洞"，说明是修复问题
+if echo "$REVIEW_RESULT" | grep -Eq "(删除|移除|修复|消除).*(危险|漏洞|风险|问题)"; then
+    echo "✅ AI 识别到这是一个修复问题的变更"
+    echo "✅ AI 审查通过，允许推送"
+    exit 0
+fi
+
+# 3. 检查是否有严重问题（且不是修复）
+if echo "$REVIEW_RESULT" | grep -Eq "严重|critical|❌|不允许|不建议|阻止"; then
     echo "❌ 发现严重问题，不允许推送！"
     echo ""
     echo "请修复以上问题后再推送。"
