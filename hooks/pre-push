@@ -34,20 +34,24 @@ url="$2"
 # 获取当前分支
 current_branch=$(git symbolic-ref --short HEAD)
 
-# 获取未推送的提交
-unpushed_commits=$(git log origin/$current_branch..$current_branch --oneline 2>/dev/null || git log --oneline -5)
+# 确保远程 master 分支是最新的
+echo "🔄 更新远程 master 分支..."
+git fetch origin master:refs/remotes/origin/master 2>/dev/null || true
+
+# 获取当前分支相对于远程 master 的提交
+unpushed_commits=$(git log origin/master..$current_branch --oneline 2>/dev/null)
 
 if [ -z "$unpushed_commits" ]; then
-    echo "✅ 没有新的提交"
+    echo "✅ 当前分支相对于 master 没有新的提交"
     exit 0
 fi
 
-echo "📝 发现未推送的提交:"
+echo "📝 当前分支 ($current_branch) 相对于 master 的提交:"
 echo "$unpushed_commits"
 echo ""
 
-# 获取这些提交涉及的文件
-changed_files=$(git diff --name-only origin/$current_branch..$current_branch 2>/dev/null || git diff --name-only HEAD~5..HEAD)
+# 获取当前分支相对于远程 master 的文件变更
+changed_files=$(git diff --name-only origin/master..$current_branch 2>/dev/null)
 code_files=$(echo "$changed_files" | grep -E '\.(go|js|ts|jsx|tsx|py)$' || true)
 
 if [ -z "$code_files" ]; then
@@ -60,9 +64,9 @@ echo "📝 变更的文件:"
 echo "$code_files"
 echo ""
 
-# 获取这些文件的 diff 内容
-echo "🔍 获取代码变更..."
-DIFF_CONTENT=$(git diff origin/$current_branch..$current_branch 2>/dev/null || git diff HEAD~5..HEAD)
+# 获取当前分支相对于远程 master 的 diff 内容
+echo "🔍 获取代码变更（当前分支 vs origin/master）..."
+DIFF_CONTENT=$(git diff origin/master..$current_branch 2>/dev/null)
 
 if [ -z "$DIFF_CONTENT" ]; then
     echo "✅ 没有代码变更"
@@ -117,7 +121,6 @@ $DIFF_CONTENT
 1. 安全漏洞（SQL注入、XSS、敏感信息泄露）
 2. 严重的逻辑错误和潜在 Bug
 3. 性能问题
-4. 代码规范问题
 
 如果新增的代码没有问题，请明确回复「✅ 通过」或「✅ 可以推送」。
 如果发现严重问题，请明确标注「❌ 严重问题」。"
@@ -146,22 +149,8 @@ echo "$REVIEW_RESULT"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-# 智能判断：优先检查是否通过
-# 1. 如果 AI 明确说"通过"或"接受"，直接放行
-if echo "$REVIEW_RESULT" | grep -Eq "✅.*(通过|接受|允许|可以推送)|审查.*通过|建议.*接受|这个变更.*应该.*接受|这是.*正面.*修复|这是.*好的.*变更"; then
-    echo "✅ AI 审查通过，允许推送"
-    exit 0
-fi
-
-# 2. 如果包含"删除"、"移除"、"修复"等正面词汇，且提到"危险"、"漏洞"，说明是修复问题
-if echo "$REVIEW_RESULT" | grep -Eq "(删除|移除|修复|消除).*(危险|漏洞|风险|问题)"; then
-    echo "✅ AI 识别到这是一个修复问题的变更"
-    echo "✅ AI 审查通过，允许推送"
-    exit 0
-fi
-
 # 3. 检查是否有严重问题（且不是修复）
-if echo "$REVIEW_RESULT" | grep -Eq "严重|critical|❌|不允许|不建议|阻止"; then
+if echo "$REVIEW_RESULT"; then
     echo "❌ 发现严重问题，不允许推送！"
     echo ""
     echo "请修复以上问题后再推送。"
